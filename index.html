@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <title>Star Market</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- STAR SDK -->
+  <script src="https://azizbek2222.github.io/star-sdk.js/"></script>
+</head>
+<body>
+
+  <h2>Star Market ilovalari</h2>
+
+  <!-- Ilovalar chiqadigan joy -->
+  <div id="star-market-list"></div>
+
+  <!-- SDK ishga tushirish -->
+  <script>
+    StarMarket.init({
+      apiKey: "SK-W6JEDQV2W79",
+      container: "#star-market-list"
+    });
+  </script>
+
+</body>
+</html>

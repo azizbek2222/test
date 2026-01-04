@@ -3,24 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Crash Live - Fix</title>
+    <title>Crash - To'xtovsiz O'yin</title>
     <style>
-        body { font-family: 'Arial', sans-serif; background: #0a0a12; color: white; height: 100vh; margin: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; }
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background: #0a0a12; color: white; height: 100vh; margin: 0; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+        
+        .top-bar { width: 100%; padding: 15px 25px; background: #16213e; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        .balance-box { background: #1a1a2e; padding: 10px 20px; border-radius: 8px; border: 1px solid #4ecca3; }
+        .balance-box span { color: #4ecca3; font-weight: bold; font-size: 18px; }
+
+        .game-area { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; }
         #multiplier { font-size: clamp(80px, 15vw, 150px); font-weight: bold; color: #4ecca3; }
         #timer { font-size: 60px; color: #f8b400; font-weight: bold; height: 70px; }
         .crashed { color: #e94560 !important; }
-        .status-text { font-size: 20px; text-transform: uppercase; margin-top: 20px; color: #bbb; }
+
+        .controls { width: 100%; padding: 30px; background: #16213e; display: flex; justify-content: center; }
+        #actionBtn { width: 100%; max-width: 400px; padding: 20px; font-size: 18px; font-weight: bold; border: none; border-radius: 12px; cursor: pointer; transition: 0.3s; text-transform: uppercase; }
+        
+        .btn-join { background: #4ecca3; color: #0a0a12; }
+        .btn-joined { background: #1a1a2e; color: #4ecca3; border: 2px solid #4ecca3 !important; cursor: default; }
+        .btn-waiting { background: #f8b400; color: #0a0a12; }
+        .btn-cashout { background: #e94560; color: white; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
+
+        .info-text { margin-top: 10px; font-size: 18px; color: #f8b400; font-weight: bold; height: 25px; }
     </style>
 </head>
 <body>
 
-    <div id="multiplier">1.00x</div>
-    <div id="timer"></div>
-    <div class="status-text" id="status">Kutilmoqda...</div>
+    <div class="top-bar">
+        <div>ID: <span id="userId">USER1</span></div>
+        <div class="balance-box">Balans: <span id="balanceDisplay">0</span> so'm</div>
+    </div>
+
+    <div class="game-area">
+        <div id="multiplier">1.00x</div>
+        <div id="timer"></div>
+        <div class="info-text" id="infoText"></div>
+    </div>
+
+    <div class="controls">
+        <button id="actionBtn" class="btn-join">O'yinga qo'shilish</button>
+    </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, onValue, set, push, remove, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getDatabase, ref, onValue, set, get, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyBt_YoPMKJlEL7RAGwWNx6uPJpoOHaQ2iY",
@@ -37,85 +64,148 @@
 
     const multDisplay = document.getElementById('multiplier');
     const timerDisplay = document.getElementById('timer');
-    const statusDisplay = document.getElementById('status');
+    const balanceDisplay = document.getElementById('balanceDisplay');
+    const actionBtn = document.getElementById('actionBtn');
+    const infoText = document.getElementById('infoText');
 
+    let currentBalance = 0;
+    let userState = "idle"; 
     let gameLoop;
+    const userId = "user1";
+
+    onValue(ref(db, `users/${userId}`), (snap) => {
+        const userData = snap.val();
+        if (userData) {
+            currentBalance = userData.balance;
+            balanceDisplay.innerText = currentBalance.toLocaleString();
+        } else {
+            set(ref(db, `users/${userId}`), { balance: 0 });
+        }
+    });
 
     onValue(ref(db, 'current_game'), (snapshot) => {
         const data = snapshot.val();
-        
-        if (!data) {
-            checkQueue();
-            return;
+        const now = Date.now();
+
+        // AVTOMATIK UYG'OTISH: Agar o'yin yo'q bo'lsa yoki 60 sekunddan ko'p qotib qolgan bo'lsa
+        if (!data || (data.startTime && now - data.startTime > 60000)) { 
+            checkQueue(); 
+            return; 
         }
 
         cancelAnimationFrame(gameLoop);
         
         const updateTick = () => {
-            const now = Date.now();
+            const curNow = Date.now();
             
             if (data.status === 'waiting') {
-                const diff = Math.ceil((data.startTime + 10000 - now) / 1000);
-                
+                const diff = Math.ceil((data.startTime + 10000 - curNow) / 1000);
                 if (diff > 0) {
                     multDisplay.innerText = "1.00x";
                     multDisplay.classList.remove('crashed');
                     timerDisplay.innerText = diff;
-                    statusDisplay.innerText = "Tayyorlaning...";
+                    updateUI('waiting');
                     gameLoop = requestAnimationFrame(updateTick);
                 } else {
-                    // Faqat bitta brauzer holatni o'zgartirishi kifoya
+                    if (userState === "joined") userState = "playing";
                     triggerFlight(data);
                 }
             } 
             else if (data.status === 'flying') {
                 timerDisplay.innerText = "";
-                statusDisplay.innerText = "Parvoz!";
-                
-                const elapsed = (now - data.startTime) / 1000;
-                let currentX = Math.pow(Math.E, 0.08 * elapsed); // O'sish formulasi
+                const elapsed = (curNow - data.startTime) / 1000;
+                let currentX = Math.pow(Math.E, 0.08 * elapsed);
 
                 if (currentX < data.targetX) {
                     multDisplay.innerText = currentX.toFixed(2) + "x";
+                    updateUI('flying', currentX);
                     gameLoop = requestAnimationFrame(updateTick);
                 } else {
-                    multDisplay.innerText = data.targetX.toFixed(2) + "x";
-                    multDisplay.classList.add('crashed');
-                    statusDisplay.innerText = "CRASHED!";
-                    setTimeout(resetGame, 3000); // 3 soniya natijani ko'rsatib turadi
+                    finishRound(data);
                 }
             }
         };
         gameLoop = requestAnimationFrame(updateTick);
     });
 
+    function updateUI(gameStatus, xValue = 1) {
+        if (gameStatus === 'waiting') {
+            if (userState === "idle" || userState === "waiting_next") {
+                actionBtn.innerText = "O'yinga qo'shilish";
+                actionBtn.className = "btn-join";
+            } else if (userState === "joined") {
+                actionBtn.innerText = "O'yinga qo'shildingiz";
+                actionBtn.className = "btn-joined";
+            }
+            infoText.innerText = "";
+        } 
+        else if (gameStatus === 'flying') {
+            if (userState === "playing") {
+                let currentProfit = Math.floor(xValue);
+                actionBtn.innerText = `YUTUQNI OLISH: ${currentProfit} so'm`;
+                actionBtn.className = "btn-cashout";
+                infoText.innerText = "Siz o'yindasiz!";
+            } else if (userState === "waiting_next") {
+                actionBtn.innerText = "Navbatdagi o'yin kutilmoqda...";
+                actionBtn.className = "btn-waiting";
+                infoText.innerText = "";
+            } else {
+                actionBtn.innerText = "O'yinga qo'shilish";
+                actionBtn.className = "btn-join";
+                infoText.innerText = "";
+            }
+        }
+    }
+
+    actionBtn.onclick = () => {
+        if (actionBtn.className === "btn-join") {
+            get(ref(db, 'current_game')).then((snap) => {
+                const game = snap.val();
+                if (game && game.status === 'waiting') {
+                    userState = "joined";
+                    alert("O'yinga qo'shildingiz!");
+                } else {
+                    userState = "waiting_next";
+                    alert("O'yin boshlanib ketgan. Navbatdagi o'yin kutilmoqda.");
+                }
+            });
+        } 
+        else if (userState === "playing" && actionBtn.className === "btn-cashout") {
+            const currentX = parseFloat(multDisplay.innerText);
+            const winAmount = Math.floor(currentX);
+            update(ref(db, `users/${userId}`), { balance: currentBalance + winAmount });
+            userState = "idle";
+            alert(`Tabriklaymiz! Siz ${winAmount} so'm yutdingiz.`);
+        }
+    };
+
+    function finishRound(data) {
+        multDisplay.innerText = data.targetX.toFixed(2) + "x";
+        multDisplay.classList.add('crashed');
+        if (userState === "playing") userState = "idle";
+        if (userState === "waiting_next") userState = "joined";
+
+        infoText.innerText = "PORTLADI!";
+        setTimeout(resetGame, 3000);
+    }
+
     async function checkQueue() {
         const queueSnap = await get(ref(db, 'queue'));
         if (queueSnap.exists()) {
-            const queueData = queueSnap.val();
-            const firstKey = Object.keys(queueData)[0];
-            const targetX = queueData[firstKey].x;
-
+            const firstKey = Object.keys(queueSnap.val())[0];
             await set(ref(db, 'current_game'), {
                 status: 'waiting',
-                targetX: targetX,
+                targetX: queueSnap.val()[firstKey].x,
                 id: firstKey,
                 startTime: Date.now()
             });
-        } else {
-            statusDisplay.innerText = "Navbat bo'sh. Admin X kiritsin.";
         }
     }
 
     async function triggerFlight(data) {
-        // Bu funksiya statusni 'waiting' dan 'flying' ga o'tkazadi
         const snap = await get(ref(db, 'current_game'));
         if(snap.val()?.status === 'waiting') {
-            await set(ref(db, 'current_game'), {
-                ...data,
-                status: 'flying',
-                startTime: Date.now()
-            });
+            await set(ref(db, 'current_game'), { ...data, status: 'flying', startTime: Date.now() });
         }
     }
 
@@ -123,10 +213,8 @@
         const snap = await get(ref(db, 'current_game'));
         const data = snap.val();
         if (data && data.status === 'flying') {
-            // Navbatni aylanma qilish (Loop)
             await remove(ref(db, `queue/${data.id}`));
             await push(ref(db, 'queue'), { x: data.targetX });
-            // O'yinni o'chirish (onValue checkQueue-ni chaqiradi)
             await remove(ref(db, 'current_game'));
         }
     }

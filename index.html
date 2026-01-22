@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chiroqni boshqarish</title>
+    <style>
+        body { text-align: center; padding-top: 50px; font-family: sans-serif; }
+        button { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 10px; border: none; background: #007bff; color: white; }
+    </style>
+</head>
+<body>
+
+    <h2>Telefon chirog'ini boshqarish</h2>
+    <button id="toggleBtn">Chiroqni yoqish</button>
+
+    <script>
+        let track = null;
+
+        async function toggleFlashlight() {
+            try {
+                // Kamera ruxsatini so'rash va video oqimini olish
+                if (!track) {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'environment' } // Orqa kameradan foydalanish
+                    });
+                    track = stream.getVideoTracks()[0];
+                }
+
+                // Chiroq holatini tekshirish va o'zgartirish
+                const capabilities = track.getCapabilities();
+                if (!capabilities.torch) {
+                    alert("Chiroqni boshqarish qurilmangizda mavjud emas.");
+                    return;
+                }
+
+                const isTorchOn = track.getSettings().torch;
+                await track.applyConstraints({
+                    advanced: [{ torch: !isTorchOn }]
+                });
+
+                document.getElementById('toggleBtn').innerText = !isTorchOn ? "Chiroqni o'chirish" : "Chiroqni yoqish";
+                
+            } catch (err) {
+                console.error("Xatolik:", err);
+                alert("Kameraga ruxsat berilmadi yoki xatolik yuz berdi.");
+            }
+        }
+
+        document.getElementById('toggleBtn').addEventListener('click', toggleFlashlight);
+    </script>
+</body>
+</html>
